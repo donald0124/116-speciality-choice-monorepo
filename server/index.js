@@ -10,11 +10,29 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// 設定 Google Sheets 驗證
-const auth = new google.auth.GoogleAuth({
-  keyFile: 'service-account.json', // 確保這個檔案在 server 資料夾內
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
+// ✅ 新的寫法 (自動判斷環境)
+let auth;
+
+if (process.env.GOOGLE_CREDENTIALS) {
+  // 情況 A：在 Zeabur 上 (讀取環境變數)
+  try {
+    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+    console.log("正在使用 Zeabur 環境變數驗證 Google API");
+  } catch (err) {
+    console.error("Zeabur 環境變數格式錯誤", err);
+  }
+} else {
+  // 情況 B：在本地開發 (讀取 service-account.json 檔案)
+  auth = new google.auth.GoogleAuth({
+    keyFile: 'service-account.json',
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  console.log("正在使用本地檔案 service-account.json 驗證");
+}
 
 const sheets = google.sheets({ version: 'v4', auth });
 
