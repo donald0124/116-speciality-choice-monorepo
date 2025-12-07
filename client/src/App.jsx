@@ -285,7 +285,7 @@ export default function App() {
         </div>
 
         <div className="status-section">
-          <div className="section-title">全體狀況</div>
+          <div className="section-title">全體狀況(此預排結果僅供參考)</div>
           <div className="roster-list">
             {roster.sort((a,b)=>Number(a.rank)-Number(b.rank)).map(u => (
               <div key={u.name} className={`roster-row ${u.name===currentUser.name?'me':''}`}>
