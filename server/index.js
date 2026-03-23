@@ -1,15 +1,68 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const { randomBytes } = require('crypto');
 const { google } = require('googleapis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const isZeabur = Boolean(process.env.ZEABUR);
+const TOKEN_TTL_MS = Number(process.env.AUTH_TOKEN_TTL_MS || 8 * 60 * 60 * 1000);
+const authTokens = new Map();
 
 // 允許跨域請求
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+  // 避免 API 被搜尋引擎建立索引
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  next();
+});
+
+const createAuthToken = (user) => {
+  const token = randomBytes(32).toString('hex');
+  authTokens.set(token, {
+    user,
+    expiresAt: Date.now() + TOKEN_TTL_MS,
+  });
+  return token;
+};
+
+const getBearerToken = (req) => {
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Bearer ')) return null;
+  return authHeader.slice(7).trim();
+};
+
+const requireAuth = (req, res, next) => {
+  const token = getBearerToken(req);
+  if (!token) {
+    return res.status(401).json({ success: false, error: '未授權，請先登入' });
+  }
+
+  const tokenData = authTokens.get(token);
+  if (!tokenData) {
+    return res.status(401).json({ success: false, error: '登入已失效，請重新登入' });
+  }
+
+  if (tokenData.expiresAt < Date.now()) {
+    authTokens.delete(token);
+    return res.status(401).json({ success: false, error: '登入逾時，請重新登入' });
+  }
+
+  req.authUser = tokenData.user;
+  req.authToken = token;
+  next();
+};
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, data] of authTokens.entries()) {
+    if (data.expiresAt < now) {
+      authTokens.delete(token);
+    }
+  }
+}, 10 * 60 * 1000).unref();
 
 // ✅ 新的寫法 (自動判斷環境)
 let auth;
@@ -53,8 +106,41 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.post('/api/login', async (req, res) => {
+  const { name, pwd } = req.body;
+
+  if (!name || !pwd) {
+    return res.status(400).json({ success: false, error: '缺少帳號或密碼' });
+  }
+
+  try {
+    const usersReq = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Roster!A2:C', // Rank, Name, Pwd
+    });
+
+    const users = usersReq.data.values || [];
+    const found = users.find((row) => row[1] === name && String(row[2] || '') === String(pwd));
+
+    if (!found) {
+      return res.status(401).json({ success: false, error: '帳號或密碼錯誤' });
+    }
+
+    const authUser = {
+      rank: found[0],
+      name: found[1],
+    };
+
+    const token = createAuthToken(authUser);
+    res.json({ success: true, token, user: authUser });
+  } catch (error) {
+    console.error('登入失敗:', error);
+    res.status(500).json({ success: false, error: 'Server Error' });
+  }
+});
+
 // API 1: 讀取資料
-app.get('/api/data', async (req, res) => {
+app.get('/api/data', requireAuth, async (req, res) => {
   try {
     // ❌ 刪除這裡原本重複宣告的 const SPREADSHEET_ID = ...
 
@@ -83,7 +169,6 @@ app.get('/api/data', async (req, res) => {
       return {
         rank: row[0],
         name: row[1],
-        password: row[2],
         preAssigned: row[3] || null, // Outcome/Bonded
         preferences: preferences
       };
@@ -104,11 +189,17 @@ app.get('/api/data', async (req, res) => {
 });
 
 // API 2: 儲存志願序 (⭐️ 修正 2: 實作寫入邏輯)
-app.post('/api/save', async (req, res) => {
+app.post('/api/save', requireAuth, async (req, res) => {
   const { name, preferences } = req.body;
+  const actorName = req.authUser?.name;
+  const isAdmin = actorName === '謝士博';
   
   if (!name) {
     return res.status(400).json({ success: false, error: "缺少姓名" });
+  }
+
+  if (!isAdmin && name !== actorName) {
+    return res.status(403).json({ success: false, error: '只能修改自己的志願序' });
   }
 
   try {

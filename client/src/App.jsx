@@ -47,6 +47,7 @@ export default function App() {
     const saved = localStorage.getItem('currentUser_v3');
     return saved ? JSON.parse(saved) : null;
   });
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem('authToken_v1') || '');
   const [loginName, setLoginName] = useState('');
   const [loginPwd, setLoginPwd] = useState('');
 
@@ -65,11 +66,28 @@ export default function App() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  const getAuthHeaders = () => (
+    authToken ? { Authorization: `Bearer ${authToken}` } : {}
+  );
+
   const fetchData = async (showLoading = false) => {
     if (showLoading) setIsLoading(true);
     setIsSyncing(true);
     try {
-      const res = await fetch(`${API_BASE}/api/data`);
+      const res = await fetch(`${API_BASE}/api/data`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (res.status === 401) {
+        handleLogout();
+        if (showLoading) alert('登入已失效，請重新登入');
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(`讀取失敗，status=${res.status}`);
+      }
+
       const data = await res.json();
       
       if (data.config) setConfig(data.config);
@@ -91,10 +109,19 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!currentUser || !authToken) return;
+
     fetchData(true);
     const interval = setInterval(() => fetchData(false), 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [currentUser, authToken]);
+
+  useEffect(() => {
+    if (currentUser && !authToken) {
+      setCurrentUser(null);
+      localStorage.removeItem('currentUser_v3');
+    }
+  }, [currentUser, authToken]);
 
   const { allocations } = useMemo(() => calculateAllocations(roster, config), [roster, config]);
 
@@ -129,21 +156,47 @@ export default function App() {
     return cap;
   }, [roster, config, currentUser, allocations]);
 
-  const handleLogin = () => {
-    if (!roster.length) { alert("讀取中..."); return; }
-    const foundUser = roster.find(u => u.name === loginName);
-    if (!foundUser) { alert("查無此人"); return; }
-    
-    const userObj = { name: loginName, password: loginPwd, rank: foundUser.rank };
-    setCurrentUser(userObj);
-    localStorage.setItem('currentUser_v3', JSON.stringify(userObj));
-    fetchData(); 
+  const handleLogin = async () => {
+    if (!loginName || !loginPwd) {
+      alert('請輸入姓名與驗證碼');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: loginName, pwd: loginPwd }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        alert(data?.error || '登入失敗');
+        return;
+      }
+
+      setCurrentUser(data.user);
+      setAuthToken(data.token);
+      localStorage.setItem('currentUser_v3', JSON.stringify(data.user));
+      localStorage.setItem('authToken_v1', data.token);
+      setLoginPwd('');
+    } catch (error) {
+      console.error(error);
+      alert('登入失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setAuthToken('');
     localStorage.removeItem('currentUser_v3');
+    localStorage.removeItem('authToken_v1');
     setLoginName(''); setLoginPwd('');
+    setRoster([]);
+    setConfig([]);
   };
 
   const openModal = (targetName = null) => {
@@ -200,7 +253,10 @@ export default function App() {
     try {
       await fetch(`${API_BASE}/api/save`, {
         method: 'POST',
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({
           name: targetName, 
           preferences: cleanPrefs
