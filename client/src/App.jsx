@@ -50,6 +50,8 @@ export default function App() {
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('authToken_v1') || '');
   const [loginName, setLoginName] = useState('');
   const [loginPwd, setLoginPwd] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [authStatusMessage, setAuthStatusMessage] = useState('');
 
   const [config, setConfig] = useState([]);
   const [roster, setRoster] = useState([]);
@@ -70,18 +72,18 @@ export default function App() {
     authToken ? { Authorization: `Bearer ${authToken}` } : {}
   );
 
-  const fetchData = async (showLoading = false) => {
+  const fetchData = async (showLoading = false, tokenOverride = '') => {
     if (showLoading) setIsLoading(true);
     setIsSyncing(true);
     try {
       const res = await fetch(`${API_BASE}/api/data`, {
-        headers: getAuthHeaders(),
+        headers: tokenOverride ? { Authorization: `Bearer ${tokenOverride}` } : getAuthHeaders(),
       });
 
       if (res.status === 401) {
         handleLogout();
         if (showLoading) alert('登入已失效，請重新登入');
-        return;
+        return false;
       }
 
       if (!res.ok) {
@@ -99,9 +101,11 @@ export default function App() {
         setRoster(cleanedUsers);
       }
       setLastUpdated(new Date());
+      return true;
     } catch (e) {
       console.error(e);
       if (showLoading) alert("連線失敗，請確認後端 Server 是否已啟動");
+      return false;
     } finally {
       setIsLoading(false);
       setIsSyncing(false);
@@ -163,6 +167,8 @@ export default function App() {
     }
 
     setIsLoading(true);
+    setIsAuthenticating(true);
+    setAuthStatusMessage('登入驗證中...');
     try {
       const res = await fetch(`${API_BASE}/api/login`, {
         method: 'POST',
@@ -176,6 +182,12 @@ export default function App() {
         return;
       }
 
+      setAuthStatusMessage('讀取資料中...');
+      const didLoad = await fetchData(true, data.token);
+      if (!didLoad) {
+        return;
+      }
+
       setCurrentUser(data.user);
       setAuthToken(data.token);
       localStorage.setItem('currentUser_v3', JSON.stringify(data.user));
@@ -185,6 +197,8 @@ export default function App() {
       console.error(error);
       alert('登入失敗，請稍後再試');
     } finally {
+      setAuthStatusMessage('');
+      setIsAuthenticating(false);
       setIsLoading(false);
     }
   };
@@ -192,6 +206,7 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     setAuthToken('');
+    setAuthStatusMessage('');
     localStorage.removeItem('currentUser_v3');
     localStorage.removeItem('authToken_v1');
     setLoginName(''); setLoginPwd('');
@@ -269,19 +284,20 @@ export default function App() {
     }
   };
 
-  if (!currentUser) return (
+  if (!currentUser || isAuthenticating) return (
     <div className="full-screen">
       <div className="card">
         <h2 style={{textAlign:'center', marginBottom:30, fontWeight:900, color:'var(--primary-dark)'}}>M116科別分發預排系統</h2>
         <div className="input-group">
            <label className="input-label">姓名</label>
-           <input className="input-field" value={loginName} onChange={e=>setLoginName(e.target.value)} placeholder="全名"/>
+            <input className="input-field" value={loginName} onChange={e=>setLoginName(e.target.value)} placeholder="全名" disabled={isLoading}/>
         </div>
         <div className="input-group">
            <label className="input-label">驗證碼(大學學號後3碼)</label>
-           <input type="password" className="input-field" value={loginPwd} onChange={e=>setLoginPwd(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleLogin()}/>
+            <input type="password" className="input-field" value={loginPwd} onChange={e=>setLoginPwd(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleLogin()} disabled={isLoading}/>
         </div>
         <button onClick={handleLogin} disabled={isLoading} className="btn-primary">{isLoading?"連線中...":"登入"}</button>
+          {authStatusMessage && <div className="login-status-message">{authStatusMessage}</div>}
       </div>
       
       {/* ⭐️ 新增這一段：登入畫面的 Footer */}
