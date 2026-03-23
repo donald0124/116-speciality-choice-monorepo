@@ -116,7 +116,7 @@ export default function App() {
     if (!currentUser || !authToken) return;
 
     fetchData(true);
-    const interval = setInterval(() => fetchData(false), 3000);
+    const interval = setInterval(() => fetchData(false), 5000);
     return () => clearInterval(interval);
   }, [currentUser, authToken]);
 
@@ -128,6 +128,25 @@ export default function App() {
   }, [currentUser, authToken]);
 
   const { allocations } = useMemo(() => calculateAllocations(roster, config), [roster, config]);
+  const sortedRoster = useMemo(
+    () => [...roster].sort((a, b) => Number(a.rank) - Number(b.rank)),
+    [roster]
+  );
+  const displayRankByName = useMemo(() => {
+    let sequentialRank = 1;
+    const rankMap = {};
+
+    sortedRoster.forEach((u) => {
+      if (u.preAssigned) {
+        rankMap[u.name] = '*';
+      } else {
+        rankMap[u.name] = String(sequentialRank);
+        sequentialRank++;
+      }
+    });
+
+    return rankMap;
+  }, [sortedRoster]);
 
   // ⭐️ 新增：計算「輪到我選的時候」還剩下的名額
   const capacityBeforeMe = useMemo(() => {
@@ -284,6 +303,9 @@ export default function App() {
     }
   };
 
+  const myAllocated = currentUser ? allocations[currentUser.name] : null;
+  const myData = currentUser ? roster.find(u => u.name === currentUser.name) : null;
+
   if (!currentUser || isAuthenticating) return (
     <div className="full-screen">
       <div className="card">
@@ -310,28 +332,6 @@ export default function App() {
       </div>
     </div>
   );
-
-  const myAllocated = allocations[currentUser.name];
-  const myData = roster.find(u => u.name === currentUser.name);
-  const sortedRoster = useMemo(
-    () => [...roster].sort((a, b) => Number(a.rank) - Number(b.rank)),
-    [roster]
-  );
-  const displayRankByName = useMemo(() => {
-    let sequentialRank = 1;
-    const rankMap = {};
-
-    sortedRoster.forEach((u) => {
-      if (u.preAssigned) {
-        rankMap[u.name] = '*';
-      } else {
-        rankMap[u.name] = String(sequentialRank);
-        sequentialRank++;
-      }
-    });
-
-    return rankMap;
-  }, [sortedRoster]);
 
   return (
     <div className="container">
