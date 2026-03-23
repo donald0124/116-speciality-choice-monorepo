@@ -9,6 +9,13 @@ import './App.css';
 // 定義後端 API 基底網址
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+const normalizeRank = (value) => String(value || '').trim();
+const isReadOnlyRank = (rank) => normalizeRank(rank).toUpperCase() === 'X';
+const getRankSortValue = (rank) => {
+  const parsed = Number(rank);
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+};
+
 const calculateAllocations = (users, config) => {
   const capacity = {};
   config.forEach(c => {
@@ -16,7 +23,7 @@ const calculateAllocations = (users, config) => {
     capacity[`${c.label}-bound`] = c.bound;
   });
 
-  const sortedUsers = [...users].sort((a, b) => Number(a.rank) - Number(b.rank));
+  const sortedUsers = [...users].sort((a, b) => getRankSortValue(a.rank) - getRankSortValue(b.rank));
   const allocations = {};
 
   sortedUsers.forEach(user => {
@@ -138,10 +145,15 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [saveStatusMessage]);
 
-  const { allocations } = useMemo(() => calculateAllocations(roster, config), [roster, config]);
-  const sortedRoster = useMemo(
-    () => [...roster].sort((a, b) => Number(a.rank) - Number(b.rank)),
+  const isCurrentUserReadOnly = isReadOnlyRank(currentUser?.rank);
+  const eligibleRoster = useMemo(
+    () => roster.filter((u) => !isReadOnlyRank(u.rank)),
     [roster]
+  );
+  const { allocations } = useMemo(() => calculateAllocations(eligibleRoster, config), [eligibleRoster, config]);
+  const sortedRoster = useMemo(
+    () => [...eligibleRoster].sort((a, b) => getRankSortValue(a.rank) - getRankSortValue(b.rank)),
+    [eligibleRoster]
   );
   const displayRankByName = useMemo(() => {
     let sequentialRank = 1;
@@ -172,11 +184,11 @@ export default function App() {
     });
 
     // 2. 扣除排在我前面的人所佔用的名額
-    const sortedUsers = [...roster].sort((a, b) => Number(a.rank) - Number(b.rank));
+    const sortedUsers = [...eligibleRoster].sort((a, b) => getRankSortValue(a.rank) - getRankSortValue(b.rank));
     
     for (let user of sortedUsers) {
       // 只要遇到自己 (或排名比自己差的)，就停止扣除
-      if (Number(user.rank) >= Number(currentUser.rank)) break;
+      if (getRankSortValue(user.rank) >= getRankSortValue(currentUser.rank)) break;
       
       // 查看這個人最後分發到了哪裡 (利用 calculateAllocations 算出的結果)
       const assigned = allocations[user.name];
@@ -188,7 +200,7 @@ export default function App() {
       }
     }
     return cap;
-  }, [roster, config, currentUser, allocations]);
+  }, [eligibleRoster, config, currentUser, allocations]);
 
   const handleLogin = async () => {
     if (!loginName || !loginPwd) {
@@ -246,6 +258,10 @@ export default function App() {
 
   const openModal = (targetName = null) => {
     const isAdmin = currentUser.name === '謝士博';
+    if (!isAdmin && isCurrentUserReadOnly) {
+      alert('您的身分僅可瀏覽，無選填權限。');
+      return;
+    }
     const resolvedName = typeof targetName === 'string' ? targetName : currentUser.name;
     const myData = roster.find(u => u.name === resolvedName);
     if (!isAdmin && myData?.preAssigned) {
@@ -286,6 +302,12 @@ export default function App() {
   };
 
   const savePreferences = async () => {
+    if (isCurrentUserReadOnly) {
+      alert('您的身分僅可瀏覽，無選填權限。');
+      setIsModalOpen(false);
+      return;
+    }
+
     if (editingPrefs.length === 0) {
       if(!confirm("確定要清空所有志願嗎？")) return;
     }
@@ -373,7 +395,7 @@ export default function App() {
       <div className="content-scroll-area">
         <div className="status-section">
           <div className="section-title">分發結果</div>
-          <div className="result-card" onClick={() => openModal()}>
+          <div className="result-card" onClick={isCurrentUserReadOnly ? undefined : () => openModal()}>
             {myAllocated ? (
               <>
                 <div className="result-label">
@@ -381,12 +403,14 @@ export default function App() {
                   {myAllocated.isBound && <span className="tag-bound" style={{fontSize:'1rem', verticalAlign:'middle', marginLeft:5}}>綁定</span>}
                 </div>
                 <div className="result-sub">
-                    {myData?.preAssigned ? "此為預定科別 (無法修改)" : `點擊修改志願 (已填 ${myData?.preferences?.length||0} 個)`}
+                    {isCurrentUserReadOnly ? "僅可瀏覽 無選填權限" : (myData?.preAssigned ? "此為預定科別 (無法修改)" : `點擊修改志願 (已填 ${myData?.preferences?.length||0} 個)`) }
                 </div>
               </>
             ) : (
               <div style={{color:'var(--text-muted)', fontWeight:'bold'}}>
-                  {(!myData?.preferences || myData.preferences.length===0) ? (
+                  {isCurrentUserReadOnly ? (
+                    <div>僅可瀏覽 無選填權限</div>
+                  ) : ((!myData?.preferences || myData.preferences.length===0) ? (
                     <>
                       <PlusCircle size={40} style={{marginBottom:10, opacity:0.5}} />
                       <div>尚未填寫志願</div>
@@ -396,7 +420,7 @@ export default function App() {
                       <AlertTriangle size={24} style={{margin:'0 auto 5px auto'}}/>
                       志願皆已額滿，請增加更多選擇
                     </div>
-                  )}
+                  ))}
               </div>
             )}
           </div>
@@ -438,7 +462,7 @@ export default function App() {
         designed by sphsieh 2025
       </div>
 
-      {isModalOpen && (
+      {isModalOpen && !isCurrentUserReadOnly && (
         <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">

@@ -26,3 +26,5 @@ dist-ssr
 # ⭐️ 安全性設定 (新增這裡)
 service-account.json
 .env
+
+reference/

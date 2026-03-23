@@ -36,6 +36,7 @@ const getBearerToken = (req) => {
 
 const normalizeName = (value) => String(value || '').trim();
 const normalizeRank = (value) => String(value || '').trim();
+const isReadOnlyRank = (rank) => normalizeRank(rank).toUpperCase() === 'X';
 
 const requireAuth = (req, res, next) => {
   const token = getBearerToken(req);
@@ -198,6 +199,11 @@ app.post('/api/save', requireAuth, async (req, res) => {
   const actorName = normalizeName(req.authUser?.name);
   const actorRank = normalizeRank(req.authUser?.rank);
   const isAdmin = actorName === '謝士博';
+
+  if (!isAdmin && isReadOnlyRank(actorRank)) {
+    return res.status(403).json({ success: false, error: '僅可瀏覽，無選填權限' });
+  }
+
   const targetName = normalizeName(name);
   const targetRank = isAdmin ? normalizeRank(rank) : actorRank;
   
