@@ -5,6 +5,7 @@ const { google } = require('googleapis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isZeabur = Boolean(process.env.ZEABUR);
 
 // 允許跨域請求
 app.use(cors());
@@ -38,6 +39,19 @@ const sheets = google.sheets({ version: 'v4', auth });
 
 // ⭐️ 修正 1: 優先讀取環境變數，讀不到就用字串，不要在 function 裡面重複宣告
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID || '1suJb_H1iyAyogMj3ucPJ4vyeoxfAi7MrqGzyMelsVSc';
+
+if (!SPREADSHEET_ID) {
+  console.error('缺少 SPREADSHEET_ID，請在環境變數中設定');
+}
+
+app.get('/health', (req, res) => {
+  res.json({
+    ok: true,
+    runtime: isZeabur ? 'zeabur' : 'local',
+    hasSpreadsheetId: Boolean(SPREADSHEET_ID),
+    hasGoogleCredentialsEnv: Boolean(process.env.GOOGLE_CREDENTIALS),
+  });
+});
 
 // API 1: 讀取資料
 app.get('/api/data', async (req, res) => {
