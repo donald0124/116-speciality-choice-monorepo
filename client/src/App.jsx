@@ -58,6 +58,7 @@ export default function App() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPrefs, setEditingPrefs] = useState([]);
+  const [editingTargetName, setEditingTargetName] = useState(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -145,9 +146,11 @@ export default function App() {
     setLoginName(''); setLoginPwd('');
   };
 
-  const openModal = () => {
-    const myData = roster.find(u => u.name === currentUser.name);
-    if (myData?.preAssigned) {
+  const openModal = (targetName = null) => {
+    const isAdmin = currentUser.name === '謝士博';
+    const resolvedName = targetName || currentUser.name;
+    const myData = roster.find(u => u.name === resolvedName);
+    if (!isAdmin && myData?.preAssigned) {
         alert(`您已鎖定科別為：${myData.preAssigned}，無法修改志願。`);
         return;
     }
@@ -156,6 +159,7 @@ export default function App() {
       id: `${p.label}-${p.isBound ? 'b' : 'r'}`
     }));
     setEditingPrefs(prefsWithId);
+    setEditingTargetName(resolvedName);
     setIsModalOpen(true);
   };
 
@@ -187,8 +191,9 @@ export default function App() {
     if (editingPrefs.length === 0) {
       if(!confirm("確定要清空所有志願嗎？")) return;
     }
+    const targetName = editingTargetName || currentUser.name;
     const cleanPrefs = editingPrefs.map(({id, ...rest}) => rest);
-    const newRoster = roster.map(u => u.name === currentUser.name ? { ...u, preferences: cleanPrefs } : u);
+    const newRoster = roster.map(u => u.name === targetName ? { ...u, preferences: cleanPrefs } : u);
     setRoster(newRoster);
     setIsModalOpen(false);
 
@@ -197,7 +202,7 @@ export default function App() {
         method: 'POST',
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: currentUser.name, 
+          name: targetName, 
           preferences: cleanPrefs
         })
       });
@@ -288,8 +293,13 @@ export default function App() {
           <div className="section-title">全體狀況(此預排結果僅供參考)</div>
           <div className="roster-list">
             {roster.sort((a,b)=>Number(a.rank)-Number(b.rank)).map(u => (
-              <div key={u.name} className={`roster-row ${u.name===currentUser.name?'me':''}`}>
-                <div className="col-rank">{u.rank}</div>
+              <div
+                key={u.name}
+                className={`roster-row ${u.name===currentUser.name?'me':''}`}
+                onClick={currentUser.name==='謝士博' ? () => openModal(u.name) : undefined}
+                style={currentUser.name==='謝士博' ? {cursor:'pointer'} : undefined}
+              >
+                <div className="col-rank">{u.preAssigned ? '*' : u.rank}</div>
                 <div className="col-name">
                     {u.name}
                     {u.preAssigned && <span style={{fontSize:'0.7em', color:'gray', marginLeft:4}}>(定)</span>}
@@ -298,6 +308,11 @@ export default function App() {
                   {allocations[u.name] ? (
                     <span>{allocations[u.name].label}{allocations[u.name].isBound && '*'}</span>
                   ) : <span style={{color:'#cbd5e1'}}>-</span>}
+                  {u.preferences && u.preferences.length > 0 && (
+                    <div style={{fontSize:'0.65rem', color:'#94a3b8', lineHeight:1.3, marginTop:2}}>
+                      {u.preferences.map((p, i) => `${i+1}.${p.label}`).join(' ')}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -314,7 +329,7 @@ export default function App() {
         <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <span>編輯志願序 (拖曳排序)</span>
+              <span>編輯志願序{editingTargetName && editingTargetName !== currentUser.name ? ` — ${editingTargetName}` : ' (拖曳排序)'}</span>
               <button onClick={() => setIsModalOpen(false)} style={{background:'none', border:'none'}}><XCircle size={24}/></button>
             </div>
             
