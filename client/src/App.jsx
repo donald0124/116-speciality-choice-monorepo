@@ -62,6 +62,7 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPrefs, setEditingPrefs] = useState([]);
   const [editingTargetName, setEditingTargetName] = useState(null);
+  const [saveStatusMessage, setSaveStatusMessage] = useState('');
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -126,6 +127,16 @@ export default function App() {
       localStorage.removeItem('currentUser_v3');
     }
   }, [currentUser, authToken]);
+
+  useEffect(() => {
+    if (!saveStatusMessage) return;
+
+    const timeoutId = setTimeout(() => {
+      setSaveStatusMessage('');
+    }, 2500);
+
+    return () => clearTimeout(timeoutId);
+  }, [saveStatusMessage]);
 
   const { allocations } = useMemo(() => calculateAllocations(roster, config), [roster, config]);
   const sortedRoster = useMemo(
@@ -235,7 +246,7 @@ export default function App() {
 
   const openModal = (targetName = null) => {
     const isAdmin = currentUser.name === '謝士博';
-    const resolvedName = targetName || currentUser.name;
+    const resolvedName = typeof targetName === 'string' ? targetName : currentUser.name;
     const myData = roster.find(u => u.name === resolvedName);
     if (!isAdmin && myData?.preAssigned) {
         alert(`您已鎖定科別為：${myData.preAssigned}，無法修改志願。`);
@@ -278,7 +289,7 @@ export default function App() {
     if (editingPrefs.length === 0) {
       if(!confirm("確定要清空所有志願嗎？")) return;
     }
-    const targetName = editingTargetName || currentUser.name;
+    const targetName = typeof editingTargetName === 'string' ? editingTargetName : currentUser.name;
     const targetUser = roster.find(u => u.name === targetName);
     const cleanPrefs = editingPrefs.map(({id, ...rest}) => rest);
     const newRoster = roster.map(u => u.name === targetName ? { ...u, preferences: cleanPrefs } : u);
@@ -304,6 +315,7 @@ export default function App() {
         throw new Error(data?.error || '儲存失敗');
       }
 
+      setSaveStatusMessage('儲存成功');
       fetchData();
     } catch (e) {
       alert(e.message || '儲存失敗');
@@ -343,6 +355,8 @@ export default function App() {
 
   return (
     <div className="container">
+      {saveStatusMessage && <div className="save-toast">{saveStatusMessage}</div>}
+
       <div className="header">
         <div style={{display:'flex', alignItems:'center', gap:10}}>
           <div className="rank-badge">{myData?.rank}</div>
@@ -359,7 +373,7 @@ export default function App() {
       <div className="content-scroll-area">
         <div className="status-section">
           <div className="section-title">分發結果</div>
-          <div className="result-card" onClick={openModal}>
+          <div className="result-card" onClick={() => openModal()}>
             {myAllocated ? (
               <>
                 <div className="result-label">
