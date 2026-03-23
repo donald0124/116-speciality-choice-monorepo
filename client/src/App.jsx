@@ -279,13 +279,14 @@ export default function App() {
       if(!confirm("確定要清空所有志願嗎？")) return;
     }
     const targetName = editingTargetName || currentUser.name;
+    const targetUser = roster.find(u => u.name === targetName);
     const cleanPrefs = editingPrefs.map(({id, ...rest}) => rest);
     const newRoster = roster.map(u => u.name === targetName ? { ...u, preferences: cleanPrefs } : u);
     setRoster(newRoster);
     setIsModalOpen(false);
 
     try {
-      await fetch(`${API_BASE}/api/save`, {
+      const res = await fetch(`${API_BASE}/api/save`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -293,12 +294,19 @@ export default function App() {
         },
         body: JSON.stringify({
           name: targetName, 
+          rank: targetUser?.rank,
           preferences: cleanPrefs
         })
       });
+
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || '儲存失敗');
+      }
+
       fetchData();
     } catch (e) {
-      alert("儲存失敗");
+      alert(e.message || '儲存失敗');
       fetchData();
     }
   };

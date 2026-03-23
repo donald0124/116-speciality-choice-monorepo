@@ -34,6 +34,9 @@ const getBearerToken = (req) => {
   return authHeader.slice(7).trim();
 };
 
+const normalizeName = (value) => String(value || '').trim();
+const normalizeRank = (value) => String(value || '').trim();
+
 const requireAuth = (req, res, next) => {
   const token = getBearerToken(req);
   if (!token) {
@@ -108,8 +111,9 @@ app.get('/health', (req, res) => {
 
 app.post('/api/login', async (req, res) => {
   const { name, pwd } = req.body;
+  const normalizedName = normalizeName(name);
 
-  if (!name || !pwd) {
+  if (!normalizedName || !pwd) {
     return res.status(400).json({ success: false, error: '缺少帳號或密碼' });
   }
 
@@ -120,15 +124,15 @@ app.post('/api/login', async (req, res) => {
     });
 
     const users = usersReq.data.values || [];
-    const found = users.find((row) => row[1] === name && String(row[2] || '') === String(pwd));
+    const found = users.find((row) => normalizeName(row[1]) === normalizedName && String(row[2] || '') === String(pwd));
 
     if (!found) {
       return res.status(401).json({ success: false, error: '帳號或密碼錯誤' });
     }
 
     const authUser = {
-      rank: found[0],
-      name: found[1],
+      rank: normalizeRank(found[0]),
+      name: normalizeName(found[1]),
     };
 
     const token = createAuthToken(authUser);
@@ -167,8 +171,8 @@ app.get('/api/data', requireAuth, async (req, res) => {
       }
 
       return {
-        rank: row[0],
-        name: row[1],
+        rank: normalizeRank(row[0]),
+        name: normalizeName(row[1]),
         preAssigned: row[3] || null, // Outcome/Bonded
         preferences: preferences
       };
@@ -190,31 +194,44 @@ app.get('/api/data', requireAuth, async (req, res) => {
 
 // API 2: 儲存志願序 (⭐️ 修正 2: 實作寫入邏輯)
 app.post('/api/save', requireAuth, async (req, res) => {
-  const { name, preferences } = req.body;
-  const actorName = req.authUser?.name;
+  const { name, rank, preferences } = req.body;
+  const actorName = normalizeName(req.authUser?.name);
+  const actorRank = normalizeRank(req.authUser?.rank);
   const isAdmin = actorName === '謝士博';
+  const targetName = normalizeName(name);
+  const targetRank = isAdmin ? normalizeRank(rank) : actorRank;
   
-  if (!name) {
-    return res.status(400).json({ success: false, error: "缺少姓名" });
+  if (!targetRank && !targetName) {
+    return res.status(400).json({ success: false, error: "缺少使用者資訊" });
   }
 
-  if (!isAdmin && name !== actorName) {
-    return res.status(403).json({ success: false, error: '只能修改自己的志願序' });
+  if (!isAdmin && !actorRank) {
+    return res.status(401).json({ success: false, error: '登入資訊不完整，請重新登入' });
   }
 
   try {
-    // 步驟 A: 先讀取所有使用者，找出該使用者的「列號 (Row Index)」
+    // 步驟 A: 先讀取排名與姓名，找出該使用者的列號
     const usersReq = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Roster!B:B', // 只讀取 B 欄 (姓名欄) 來比對
+      range: 'Roster!A2:B', // Rank, Name
     });
 
     const rows = usersReq.data.values || [];
-    // Google Sheets 列號從 1 開始，且我們讀的是整欄
-    // findIndex 找到的是陣列索引 (從 0 開始)，所以要 +1 變成 Sheet 列號
-    const rowIndex = rows.findIndex(row => row[0] === name) + 1;
+    const matchedIndex = rows.findIndex((row) => {
+      const rowRank = normalizeRank(row[0]);
+      const rowName = normalizeName(row[1]);
 
-    if (rowIndex === 0) {
+      if (targetRank) {
+        return rowRank === targetRank;
+      }
+
+      return rowName === targetName;
+    });
+
+    // 因為範圍從 A2 開始，所以索引 0 對應試算表第 2 列
+    const rowIndex = matchedIndex + 2;
+
+    if (matchedIndex === -1) {
       return res.status(404).json({ success: false, error: "查無此人" });
     }
 
@@ -232,7 +249,7 @@ app.post('/api/save', requireAuth, async (req, res) => {
       },
     });
 
-    console.log(`已儲存 ${name} 的志願序到第 ${rowIndex} 列`);
+    console.log(`已儲存 ${targetName || actorName} 的志願序到第 ${rowIndex} 列`);
     res.json({ success: true });
 
   } catch (error) {
