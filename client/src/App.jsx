@@ -241,6 +241,25 @@ export default function App() {
 
   const myAllocated = allocations[currentUser.name];
   const myData = roster.find(u => u.name === currentUser.name);
+  const sortedRoster = useMemo(
+    () => [...roster].sort((a, b) => Number(a.rank) - Number(b.rank)),
+    [roster]
+  );
+  const displayRankByName = useMemo(() => {
+    let sequentialRank = 1;
+    const rankMap = {};
+
+    sortedRoster.forEach((u) => {
+      if (u.preAssigned) {
+        rankMap[u.name] = '*';
+      } else {
+        rankMap[u.name] = String(sequentialRank);
+        sequentialRank++;
+      }
+    });
+
+    return rankMap;
+  }, [sortedRoster]);
 
   return (
     <div className="container">
@@ -292,14 +311,14 @@ export default function App() {
         <div className="status-section">
           <div className="section-title">全體狀況(此預排結果僅供參考)</div>
           <div className="roster-list">
-            {roster.sort((a,b)=>Number(a.rank)-Number(b.rank)).map(u => (
+            {sortedRoster.map(u => (
               <div
                 key={u.name}
                 className={`roster-row ${u.name===currentUser.name?'me':''}`}
                 onClick={currentUser.name==='謝士博' ? () => openModal(u.name) : undefined}
                 style={currentUser.name==='謝士博' ? {cursor:'pointer'} : undefined}
               >
-                <div className="col-rank">{u.preAssigned ? '*' : u.rank}</div>
+                <div className="col-rank">{displayRankByName[u.name]}</div>
                 <div className="col-name">
                     {u.name}
                     {u.preAssigned && <span style={{fontSize:'0.7em', color:'gray', marginLeft:4}}>(定)</span>}
