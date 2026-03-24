@@ -7,7 +7,7 @@ const { google } = require('googleapis');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const isZeabur = Boolean(process.env.ZEABUR);
-const TOKEN_TTL_MS = Number(process.env.AUTH_TOKEN_TTL_MS || 8 * 60 * 60 * 1000);
+const TOKEN_TTL_MS = Number(process.env.AUTH_TOKEN_TTL_MS || 240 * 60 * 60 * 1000);
 const authTokens = new Map();
 
 // 允許跨域請求
