@@ -470,7 +470,7 @@ export default function App() {
 
       {/* ⭐️ 新增這一段 Footer */}
       <div className="footer-copyright">
-        designed by sphsieh 2025
+        designed by sphsieh 2025-2026
       </div>
 
       {isModalOpen && !isCurrentUserReadOnly && (
