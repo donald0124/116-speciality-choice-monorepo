@@ -155,6 +155,15 @@ export default function App() {
     () => [...eligibleRoster].sort((a, b) => getRankSortValue(a.rank) - getRankSortValue(b.rank)),
     [eligibleRoster]
   );
+  const daysUntilSelection = useMemo(() => {
+    const now = new Date();
+    const targetDate = new Date(now.getFullYear(), 4, 11); // 5/11
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const msPerDay = 24 * 60 * 60 * 1000;
+
+    const days = Math.ceil((targetDate.getTime() - todayStart.getTime()) / msPerDay);
+    return Math.max(0, days);
+  }, []);
   const displayRankByName = useMemo(() => {
     let sequentialRank = 1;
     const rankMap = {};
@@ -393,6 +402,8 @@ export default function App() {
       </div>
 
       <div className="content-scroll-area">
+        <div className="countdown-row">(暫定)選科時間：5/11 10:00 倒數{daysUntilSelection}天</div>
+
         <div className="status-section">
           <div className="section-title">分發結果</div>
           <div className="result-card" onClick={isCurrentUserReadOnly ? undefined : () => openModal()}>

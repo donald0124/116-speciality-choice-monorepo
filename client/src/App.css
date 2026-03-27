@@ -80,6 +80,18 @@ html, body {
   flex: 1;
 }
 
+.countdown-row {
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #e0f2fe;
+  color: #075985;
+  border: 1px solid #bae6fd;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 /* --- Components --- */
 
 .full-screen {
