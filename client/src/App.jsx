@@ -402,10 +402,10 @@ export default function App() {
       </div>
 
       <div className="content-scroll-area">
-        <div className="countdown-row">(暫定)選科時間：5/11 10:00 倒數{daysUntilSelection}天</div>
+        <div className="countdown-row">選科(@三總第一演講廳)時間：5/11 10:00 倒數{daysUntilSelection}天</div>
 
         <div className="status-section">
-          <div className="section-title">分發結果</div>
+          <div className="section-title">可能的分發結果</div>
           <div className="result-card" onClick={isCurrentUserReadOnly ? undefined : () => openModal()}>
             {myAllocated ? (
               <>
