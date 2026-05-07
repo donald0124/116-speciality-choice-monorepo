@@ -9,6 +9,24 @@ import './App.css';
 // 定義後端 API 基底網址
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+const SELECTION_TIME = new Date('2026-05-11T02:00:00Z'); // 2026/05/11 10:00 UTC+8
+const HOSPITAL_TIME  = new Date('2026-08-01T00:00:00Z'); // 2026/08/01 08:00 UTC+8
+
+function getCountdownLabel() {
+  const now = new Date();
+  if (now < SELECTION_TIME) {
+    const diffMs = SELECTION_TIME - now;
+    const totalMinutes = Math.ceil(diffMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `倒數${hours}小時${minutes}分鐘`;
+  } else {
+    const diffMs = HOSPITAL_TIME - now;
+    const days = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+    return `回醫院倒數${Math.max(0, days)}天`;
+  }
+}
+
 const normalizeRank = (value) => String(value || '').trim();
 const isReadOnlyRank = (rank) => normalizeRank(rank).toUpperCase() === 'X';
 const getRankSortValue = (rank) => {
@@ -155,14 +173,10 @@ export default function App() {
     () => [...eligibleRoster].sort((a, b) => getRankSortValue(a.rank) - getRankSortValue(b.rank)),
     [eligibleRoster]
   );
-  const daysUntilSelection = useMemo(() => {
-    const now = new Date();
-    const targetDate = new Date(now.getFullYear(), 4, 11); // 5/11
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const msPerDay = 24 * 60 * 60 * 1000;
-
-    const days = Math.ceil((targetDate.getTime() - todayStart.getTime()) / msPerDay);
-    return Math.max(0, days);
+  const [countdownLabel, setCountdownLabel] = useState(getCountdownLabel);
+  useEffect(() => {
+    const id = setInterval(() => setCountdownLabel(getCountdownLabel()), 60000);
+    return () => clearInterval(id);
   }, []);
   const displayRankByName = useMemo(() => {
     let sequentialRank = 1;
@@ -402,7 +416,7 @@ export default function App() {
       </div>
 
       <div className="content-scroll-area">
-        <div className="countdown-row">選科時間：5/11(一) 10:00<br />倒數{daysUntilSelection}天</div>
+        <div className="countdown-row">選科時間：5/11(一) 10:00<br />{countdownLabel}</div>
 
         <div className="status-section">
           <div className="section-title">可能的分發結果</div>
