@@ -158,7 +158,7 @@ app.get('/api/data', requireAuth, async (req, res) => {
     // 2. 讀取 Users
     const usersReq = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Roster!A2:E', // Rank, Name, Pwd, Outcome, Selection
+      range: 'Roster!A2:F', // Rank, Name, Pwd, Outcome, Selection, FinalSpecialty
     });
 
     // 3. 資料整理
@@ -175,7 +175,8 @@ app.get('/api/data', requireAuth, async (req, res) => {
         rank: normalizeRank(row[0]),
         name: normalizeName(row[1]),
         preAssigned: row[3] || null, // Outcome/Bonded
-        preferences: preferences
+        preferences: preferences,
+        finalSpecialty: row[5] || null, // 最終科別
       };
     });
 
@@ -260,6 +261,47 @@ app.post('/api/save', requireAuth, async (req, res) => {
 
   } catch (error) {
     console.error('儲存失敗:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API 3: 儲存最終科別 (僅謝士博可操作)
+app.post('/api/saveFinal', requireAuth, async (req, res) => {
+  const actorName = normalizeName(req.authUser?.name);
+  if (actorName !== '謝士博') {
+    return res.status(403).json({ success: false, error: '僅謝士博可設定最終科別' });
+  }
+
+  const { name, finalSpecialty } = req.body;
+  const targetName = normalizeName(name);
+  if (!targetName) {
+    return res.status(400).json({ success: false, error: '缺少姓名' });
+  }
+
+  try {
+    const usersReq = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Roster!A2:B',
+    });
+
+    const rows = usersReq.data.values || [];
+    const matchedIndex = rows.findIndex(row => normalizeName(row[1]) === targetName);
+    if (matchedIndex === -1) {
+      return res.status(404).json({ success: false, error: '查無此人' });
+    }
+
+    const rowIndex = matchedIndex + 2;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `Roster!F${rowIndex}`,
+      valueInputOption: 'RAW',
+      resource: { values: [[finalSpecialty || '']] },
+    });
+
+    console.log(`已儲存 ${targetName} 的最終科別: ${finalSpecialty} 到第 ${rowIndex} 列`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('儲存最終科別失敗:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
