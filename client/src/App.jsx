@@ -89,6 +89,10 @@ export default function App() {
   const [editingTargetName, setEditingTargetName] = useState(null);
   const [saveStatusMessage, setSaveStatusMessage] = useState('');
 
+  const [isFinalModalOpen, setIsFinalModalOpen] = useState(false);
+  const [finalEditingTarget, setFinalEditingTarget] = useState(null);
+  const [finalEditingSelection, setFinalEditingSelection] = useState(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -120,10 +124,13 @@ export default function App() {
       
       if (data.config) setConfig(data.config);
       if (data.users) {
-        const cleanedUsers = data.users.map(u => ({
-          ...u,
-          preferences: Array.isArray(u.preferences) ? u.preferences : []
-        }));
+        const cleanedUsers = data.users.map(u => {
+          let finalSpecialty = u.finalSpecialty || null;
+          if (u.preAssigned && u.preAssigned.includes('綁定')) {
+            finalSpecialty = u.preAssigned.replace(/[\(\-]?綁定[\)]?/, '').trim();
+          }
+          return { ...u, preferences: Array.isArray(u.preferences) ? u.preferences : [], finalSpecialty };
+        });
         setRoster(cleanedUsers);
       }
       setLastUpdated(new Date());
@@ -368,6 +375,36 @@ export default function App() {
     }
   };
 
+  const openFinalModal = (name) => {
+    if (currentUser.name !== '謝士博') return;
+    const user = roster.find(u => u.name === name);
+    if (user?.preAssigned?.includes('綁定')) return;
+    setFinalEditingTarget(name);
+    setFinalEditingSelection(user?.finalSpecialty || null);
+    setIsFinalModalOpen(true);
+  };
+
+  const saveFinalSpecialty = async () => {
+    const newRoster = roster.map(u =>
+      u.name === finalEditingTarget ? { ...u, finalSpecialty: finalEditingSelection } : u
+    );
+    setRoster(newRoster);
+    setIsFinalModalOpen(false);
+    try {
+      const res = await fetch(`${API_BASE}/api/saveFinal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ name: finalEditingTarget, finalSpecialty: finalEditingSelection }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '儲存失敗');
+      fetchData();
+    } catch (e) {
+      alert(e.message || '儲存失敗');
+      fetchData();
+    }
+  };
+
   const myAllocated = currentUser ? allocations[currentUser.name] : null;
   const myData = currentUser ? roster.find(u => u.name === currentUser.name) : null;
 
@@ -454,6 +491,12 @@ export default function App() {
         <div className="status-section">
           <div className="section-title">全體狀況(此預排結果僅供參考)</div>
           <div className="roster-list">
+            <div className="roster-row" style={{borderBottom:'2px solid #e2e8f0', background:'#f8fafc', padding:'6px 16px'}}>
+              <div className="col-rank" style={{color:'#94a3b8', fontSize:'0.75rem'}}>#</div>
+              <div className="col-name" style={{color:'#94a3b8', fontSize:'0.75rem'}}>姓名</div>
+              <div className="col-res" style={{color:'#94a3b8', fontSize:'0.75rem'}}>預排結果</div>
+              <div className="col-final" style={{fontSize:'0.75rem'}}>最終科別</div>
+            </div>
             {sortedRoster.map(u => (
               <div
                 key={u.name}
@@ -476,6 +519,13 @@ export default function App() {
                     </div>
                   )}
                 </div>
+                <div
+                  className="col-final"
+                  onClick={e => { e.stopPropagation(); openFinalModal(u.name); }}
+                  style={currentUser.name==='謝士博' && !u.preAssigned?.includes('綁定') ? {cursor:'pointer'} : undefined}
+                >
+                  {u.finalSpecialty || <span style={{color:'#cbd5e1'}}>-</span>}
+                </div>
               </div>
             ))}
           </div>
@@ -486,6 +536,34 @@ export default function App() {
       <div className="footer-copyright">
         designed by sphsieh 2025-2026
       </div>
+
+      {isFinalModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsFinalModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span>設定最終科別{finalEditingTarget ? ` — ${finalEditingTarget}` : ''}</span>
+              <button onClick={() => setIsFinalModalOpen(false)} style={{background:'none', border:'none'}}><XCircle size={24}/></button>
+            </div>
+            <div className="modal-body">
+              <div style={{fontSize:'0.9rem', fontWeight:'bold', marginBottom:8, color:'var(--text-muted)'}}>點擊選擇最終科別（再次點擊取消）：</div>
+              <div className="options-grid">
+                {config.map(dept => dept.regular > 0 && (
+                  <button
+                    key={dept.label}
+                    className={`opt-btn ${finalEditingSelection === dept.label ? 'selected' : ''}`}
+                    onClick={() => setFinalEditingSelection(finalEditingSelection === dept.label ? null : dept.label)}
+                  >
+                    <div>{dept.label}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{padding:16, borderTop:'1px solid #f1f5f9'}}>
+              <button className="btn-primary" onClick={saveFinalSpecialty}>儲存最終科別</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isModalOpen && !isCurrentUserReadOnly && (
         <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
